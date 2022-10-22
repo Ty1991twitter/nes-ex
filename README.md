@@ -22,6 +22,13 @@ Finally, the emulator is run using trace2.cc .
 It will produce a logfile, nestrace2.log, for each frame of the emulator's video output.
 Each log entry is a bitmask of EIP values accessed during that frame.
 
+**********************
+** COMPILING AND MAKING TRACEABLE
+**********************
+
+Loading the a rom.
+Just drop a nes rom in the directory and run ./nes-ex and then the rom name after.
+Example: "./nes-ex Super_Mario_Bros.nes"
 
 **********************
 ** MATCHING THE TRACE TO SOURCE CODE IN GRAPHICAL MANNER
