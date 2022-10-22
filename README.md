@@ -23,10 +23,9 @@ It will produce a logfile, nestrace2.log, for each frame of the emulator's video
 Each log entry is a bitmask of EIP values accessed during that frame.
 
 **********************
-** COMPILING AND MAKING TRACEABLE
+** LOADING THE ROM
 **********************
 
-Loading the a rom.
 Just drop a nes rom in the directory and run ./nes-ex and then the rom name after.
 Example: "./nes-ex Super_Mario_Bros.nes"
 
