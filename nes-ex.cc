@@ -60,31 +60,23 @@ namespace IO
             for(int p0=0; p0<512; ++p0)
             for(int p1=0; p1<64; ++p1)
             {
-                // Calculate the luma and chroma by emulating the relevant circuits:
                 auto s = "\372\273\32\305\35\311I\330D\357\175\13D!}N";
                 int y=0, i=0, q=0;
                 for(int p=0; p<12; ++p) // 12 samples of NTSC signal constitute a color.
                 {
-                    // Sample either the previous or the current pixel.
                     int r = (p+o*4)%12, pixel = r < 8-u*2 ? p0 : p1; // Use pixel=p0 to disable artifacts.
-                    // Decode the color index.
                     int c = pixel%16, l = c<0xE ? pixel/4 & 12 : 4, e=p0/64;
-                    // NES NTSC modulator (square wave between up to four voltage levels):
                     int b = 40 + s[(c > 12*((c+8+p)%12 < 6)) + 2*!(0451326 >> p/2*3 & e) + l];
-                    // Ideal TV NTSC demodulator:
                     y += b;
                     i += b * int(std::cos(M_PI * p / 6) * 5909);
                     q += b * int(std::sin(M_PI * p / 6) * 5909);
                 }
-                // Convert the YIQ color into RGB
                 auto gammafix = [=](float f) { return f <= 0.f ? 0.f : std::pow(f, 2.2f / 1.8f); };
                 auto clamp    = [](int v) { return v>255 ? 255 : v; };
-                // Store color at subpixel precision
                 if(u==2) palette[o][p1][p0] += 0x10000*clamp(255 * gammafix(y/1980.f + i* 0.947f/9e6f + q* 0.624f/9e6f));
                 if(u==1) palette[o][p1][p0] += 0x00100*clamp(255 * gammafix(y/1980.f + i*-0.275f/9e6f + q*-0.636f/9e6f));
                 if(u==0) palette[o][p1][p0] += 0x00001*clamp(255 * gammafix(y/1980.f + i*-1.109f/9e6f + q* 1.709f/9e6f));
             }
-        // Store the RGB color into the frame buffer.
         ((u32*) s->pixels) [py * 256 + px] = palette[offset][prev%64][pixel];
         prev = pixel;
     }
@@ -185,7 +177,7 @@ namespace GamePak
     }
 }
 
-namespace CPU /* CPU: Ricoh RP2A03 (based on MOS6502, almost the same as in Commodore 64) */
+namespace CPU
 {
     u8 RAM[0x800];
     bool reset=true, nmi=false, nmi_edge_detected=false, intr=false;
@@ -196,9 +188,9 @@ namespace CPU /* CPU: Ricoh RP2A03 (based on MOS6502, almost the same as in Comm
     void tick();
 }
 
-namespace PPU /* Picture Processing Unit */
+namespace PPU
 {
-    union regtype // PPU register file
+    union regtype
     {
         u32 value;
         // Reg0 (write)             // Reg1 (write)             // Reg2 (read)
@@ -211,24 +203,22 @@ namespace PPU /* Picture Processing Unit */
         RegBit<6,1,u32> SlaveFlag;  RegBit<11,2,u32> ShowBGSP;  RegBit<24,2,u32> OAMdata;
         RegBit<7,1,u32> NMIenabled; RegBit<13,3,u32> EmpRGB;    RegBit<26,6,u32> OAMindex;
     } reg;
-    // Raw memory data as read&written by the game
     u8 palette[32], OAM[256];
-    // Decoded sprite information, used & changed during each scanline
     struct { u8 sprindex, y, index, attr, x; u16 pattern; } OAM2[8], OAM3[8];
 
     union scrolltype
     {
-        RegBit<3,16,u32> raw;       // raw VRAM address (16-bit)
-        RegBit<0, 8,u32> xscroll;   // low 8 bits of first write to 2005
-        RegBit<0, 3,u32> xfine;     // low 3 bits of first write to 2005
-        RegBit<3, 5,u32> xcoarse;   // high 5 bits of first write to 2005
-        RegBit<8, 5,u32> ycoarse;   // high 5 bits of second write to 2005
-        RegBit<13,2,u32> basenta;   // nametable index (copied from 2000)
-        RegBit<13,1,u32> basenta_h; // horizontal nametable index
-        RegBit<14,1,u32> basenta_v; // vertical   nametable index
-        RegBit<15,3,u32> yfine;     // low 3 bits of second write to 2005
-        RegBit<11,8,u32> vaddrhi;   // first write to 2006 (with high 2 bits set to zero)
-        RegBit<3, 8,u32> vaddrlo;   // second write to 2006
+        RegBit<3,16,u32> raw;       
+        RegBit<0, 8,u32> xscroll;  
+        RegBit<0, 3,u32> xfine;     
+        RegBit<3, 5,u32> xcoarse;  
+        RegBit<8, 5,u32> ycoarse;   
+        RegBit<13,2,u32> basenta;  
+        RegBit<13,1,u32> basenta_h; 
+        RegBit<14,1,u32> basenta_v; 
+        RegBit<15,3,u32> yfine;
+        RegBit<11,8,u32> vaddrhi;
+        RegBit<3, 8,u32> vaddrlo;
     } scroll, vaddr;
 
     unsigned pat_addr, sprinpos, sproutpos, sprrenpos, sprtmp;
@@ -239,7 +229,6 @@ namespace PPU /* Picture Processing Unit */
     int read_buffer=0, open_bus=0, open_bus_decay_timer=0;
     bool even_odd_toggle=false, offset_toggle=false;
 
-    /* Memory mapping: Convert PPU memory address into a reference to relevant data */
     u8& mmap(int i)
     {
         i &= 0x3FFF;
@@ -248,46 +237,45 @@ namespace PPU /* Picture Processing Unit */
                                              [ i % GamePak::VROM_Granularity];
         return                GamePak::Nta[   (i>>10)&3][i&0x3FF];
     }
-    // External I/O: read or write
     u8 Access(u16 index, u8 v, bool write)
     {
         auto RefreshOpenBus = [&](u8 v) { return open_bus_decay_timer = 77777, open_bus = v; };
         u8 res = open_bus;
         if(write) RefreshOpenBus(v);
-        switch(index) // Which port from $200x?
+        switch(index) 
         {
             case 0: if(write) { reg.sysctrl  = v; scroll.basenta = reg.BaseNTA; } break;
             case 1: if(write) { reg.dispctrl = v; } break;
             case 2: if(write) break;
                     res = reg.status | (open_bus & 0x1F);
-                    reg.InVBlank = false;  // Reading $2002 clears the vblank flag.
-                    offset_toggle = false; // Also resets the toggle for address updates.
+                    reg.InVBlank = false;  
+                    offset_toggle = false; 
                     if(VBlankState != -5)
-                        VBlankState = 0; // This also may cancel the setting of InVBlank.
+                        VBlankState = 0; 
                     break;
-            case 3: if(write) reg.OAMaddr        = v; break; // Index into Object Attribute Memory
-            case 4: if(write) OAM[reg.OAMaddr++] = v;        // Write or read the OAM (sprites).
+            case 3: if(write) reg.OAMaddr        = v; break; 
+            case 4: if(write) OAM[reg.OAMaddr++] = v;
                     else res = RefreshOpenBus(OAM[reg.OAMaddr] & (reg.OAMdata==2 ? 0xE3 : 0xFF));
                     break;
-            case 5: if(!write) break; // Set background scrolling offset
+            case 5: if(!write) break; 
                 if(offset_toggle) { scroll.yfine   = v & 7; scroll.ycoarse = v >> 3; }
                 else              { scroll.xscroll = v; }
                 offset_toggle = !offset_toggle;
                 break;
-            case 6: if(!write) break; // Set video memory position for reads/writes
+            case 6: if(!write) break; 
                 if(offset_toggle) { scroll.vaddrlo = v; vaddr.raw = (unsigned) scroll.raw; }
                 else              { scroll.vaddrhi = v & 0x3F; }
                 offset_toggle = !offset_toggle;
                 break;
             case 7:
                 res = read_buffer;
-                u8& t = mmap(vaddr.raw); // Access the video memory.
+                u8& t = mmap(vaddr.raw); 
                 if(write) res = t = v;
-                else { if((vaddr.raw & 0x3F00) == 0x3F00) // palette?
+                else { if((vaddr.raw & 0x3F00) == 0x3F00) 
                           res = read_buffer = (open_bus & 0xC0) | (t & 0x3F);
                        read_buffer = t; }
                 RefreshOpenBus(res);
-                vaddr.raw = vaddr.raw + (reg.Inc ? 32 : 1); // The address is automatically updated.
+                vaddr.raw = vaddr.raw + (reg.Inc ? 32 : 1); 
                 break;
         }
         return res;
